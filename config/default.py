@@ -77,7 +77,7 @@ CORS_ALLOW_CREDENTIALS = False
 
 # CORS白名单，需要配置环境变量，线上需要在开发者中心->应用开发->应用引擎->环境配置中添加环境变量
 CORS_ALLOWED_ORIGINS = [
-    os.getenv('CORS_ALLOWED_ORIGIN'),     # 允许跨域的域名
+    os.getenv('CORS_ALLOWED_ORIGIN', 'http://localhost:8000'),     # 允许跨域的域名
 ]
 
 # 默认数据库AUTO字段类型
