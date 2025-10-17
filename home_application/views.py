@@ -13,9 +13,14 @@ specific language governing permissions and limitations under the License.
 
 from django.http import JsonResponse
 from django.shortcuts import render
-from .models import BizInfo
-from blueking.component.shortcuts import get_client_by_request
 
+from .constants import JOB_BK_BIZ_ID, BACKUP_FILE_PLAN_ID, MAX_ATTEMPTS, WAITING_CODE, JOB_RESULT_ATTEMPTS_INTERVAL, \
+    SUCCESS_CODE, WEB_SUCCESS_CODE, BK_JOB_HOST
+from .models import BizInfo, BackupRecord
+from blueking.component.shortcuts import get_client_by_request
+import time
+import json
+from . import constants
 
 
 # 开发框架中通过中间件默认是需要登录态的，如有不需要登录的，可添加装饰器login_exempt
@@ -175,6 +180,202 @@ def get_host_detail(request):
 
     result = client.cc.get_host_base_info(kwargs)
     return JsonResponse(result)
+
+
+def search_file(request):
+    """
+    根据主机IP、文件目录和文件后缀，查询符合条件的主机文件
+    """
+
+    # 注意：先在constants.py中替换SEARCH_FILE_PLAN_ID为你自己在作业平台上新建的方案的ID
+    host_id_list_str = request.GET.get("host_id_list")
+    host_id_list = [int(bk_host_id) for bk_host_id in host_id_list_str.split(",")]
+    kwargs = {
+        "bk_scope_type": "biz",
+        "bk_scope_id": constants.JOB_BK_BIZ_ID,
+        "job_plan_id": constants.SEARCH_FILE_PLAN_ID,
+        # TODO 修改为你创建的执行方案的全局变量
+        "global_var_list": [
+            {
+                "name": "host_list",
+                "server": {
+                    "host_id_list": host_id_list,
+                },
+            },
+            {
+                "name": "search_path",
+                "value": request.GET.get("search_path"),
+            },
+            {
+                "name": "suffix",
+                "value": request.GET.get("suffix"),
+            },
+        ],
+    }
+
+    # 调用执行方案
+    client = get_client_by_request(request)
+    job_instance_id = client.jobv3.execute_job_plan(**kwargs).get("data").get("job_instance_id")
+
+    kwargs = {
+        "bk_scope_type": "biz",
+        "bk_scope_id": constants.JOB_BK_BIZ_ID,
+        "job_instance_id": job_instance_id,
+    }
+
+    attempts = 0
+    while attempts < constants.MAX_ATTEMPTS:
+        # 获取执行方案执行状态
+        step_instance_list = client.jobv3.get_job_instance_status(**kwargs).get("data").get("step_instance_list")
+        if step_instance_list[0].get("status") == constants.WAITING_CODE:
+            time.sleep(constants.JOB_RESULT_ATTEMPTS_INTERVAL)
+        elif step_instance_list[0].get("status") != constants.SUCCESS_CODE:
+            res_data = {
+                "result": False,
+                "code": constants.WEB_SUCCESS_CODE,
+                "message": "search failed",
+            }
+            return JsonResponse(res_data)
+        elif step_instance_list[0].get("status") == constants.SUCCESS_CODE:
+            break
+        attempts += 1
+
+    step_instance_id = step_instance_list[0].get("step_instance_id")
+
+    log_list = []
+    for bk_host_id in host_id_list:
+        data = {
+            "bk_scope_type": "biz",
+            "bk_scope_id": constants.JOB_BK_BIZ_ID,
+            "job_instance_id": job_instance_id,
+            "step_instance_id": step_instance_id,
+            "bk_host_id": bk_host_id,
+        }
+
+        # 查询执行日志
+        response = client.jobv3.get_job_instance_ip_log(**data).get("data")
+        step_res = response.get("log_content")
+        json_step_res = json.loads(step_res)
+
+        json_step_res["bk_host_id"] = response.get("bk_host_id")
+        log_list.append(json_step_res)
+
+    res_data = {
+        "result": True,
+        "code": constants.WEB_SUCCESS_CODE,
+        "data": log_list,
+    }
+    return JsonResponse(res_data)
+
+def backup_file(request):
+    """
+    根据主机IP、文件目录和文件后缀，备份符合条件的主机文件到指定目录
+    """
+
+    # 注意：先在constants.py中替换BACKUP_FILE_PLAN_ID为你自己在作业平台上新建的方案的ID
+    host_id_list_str = request.GET.get("host_id_list")
+    host_id_list = [int(bk_host_id) for bk_host_id in host_id_list_str.split(",")]
+    search_path = request.GET.get("search_path")
+    suffix = request.GET.get("suffix")
+    kwargs = {
+        "bk_scope_type": "biz",
+        "bk_scope_id": JOB_BK_BIZ_ID,
+        "job_plan_id": BACKUP_FILE_PLAN_ID,
+        # TODO 修改为你创建的执行方案的全局变量
+        "global_var_list": [
+            {
+                "name": "host_list",
+                "server": {
+                    "host_id_list": host_id_list,
+                },
+            },
+            {
+                "name": "search_path",
+                "value": search_path
+            },
+            {
+                "name": "suffix",
+                "value": suffix
+            },
+            {
+                "name": "backup_path",
+                "value": request.GET.get("backup_path"),
+            },
+        ],
+    }
+
+    # 调用执行方案
+    client = get_client_by_request(request)
+    job_instance_id = client.jobv3.execute_job_plan(**kwargs).get("data").get("job_instance_id")
+
+    kwargs = {
+        "bk_scope_type": "biz",
+        "bk_scope_id": JOB_BK_BIZ_ID,
+        "job_instance_id": job_instance_id,
+    }
+    attempts = 0
+    while attempts < MAX_ATTEMPTS:
+        # 获取执行方案执行状态
+        step_instance_list = client.jobv3.get_job_instance_status(**kwargs).get("data").get("step_instance_list")
+        if step_instance_list[0].get("status") == WAITING_CODE:
+            time.sleep(JOB_RESULT_ATTEMPTS_INTERVAL)
+        elif step_instance_list[0].get("status") != SUCCESS_CODE:
+            res_data = {
+                "result": False,
+                "code": WEB_SUCCESS_CODE,
+                "message": "backup failed",
+            }
+            return JsonResponse(res_data)
+        elif step_instance_list[0].get("status") == SUCCESS_CODE:
+            break
+        attempts += 1
+
+    step_instance_id = step_instance_list[0].get("step_instance_id")
+
+    for bk_host_id in host_id_list:
+        data = {
+            "bk_scope_type": "biz",
+            "bk_scope_id": JOB_BK_BIZ_ID,
+            "job_instance_id": job_instance_id,
+            "step_instance_id": step_instance_id,
+            "bk_host_id": bk_host_id,
+        }
+
+        # 查询执行日志
+        response = client.jobv3.get_job_instance_ip_log(**data).get("data")
+        step_res = response.get("log_content")
+        json_step_res = json.loads(step_res)
+
+        for step_res in json_step_res:
+            # 创建备份记录
+            step_res["bk_host_id"] = bk_host_id
+            step_res["bk_file_dir"] = search_path
+            step_res["bk_file_suffix"] = suffix
+            step_res["bk_file_operator"] = request.user.username
+            step_res["bk_job_link"] = "{}/biz/{}/execute/task/{}".format(
+                BK_JOB_HOST,
+                JOB_BK_BIZ_ID,
+                job_instance_id,
+            )
+            BackupRecord.objects.create(**step_res)
+
+    res_data = {
+        "result": True,
+        "data": "success",
+        "code": WEB_SUCCESS_CODE,
+    }
+    return JsonResponse(res_data)
+
+def get_backup_record(request):
+    """
+    查询备份记录
+    """
+    res_data = {
+        "result": True,
+        "data": list(BackupRecord.objects.all().order_by("-id").values()),
+        "code": WEB_SUCCESS_CODE,
+    }
+    return JsonResponse(res_data)
 
 
 

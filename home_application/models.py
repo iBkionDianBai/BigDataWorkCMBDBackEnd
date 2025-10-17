@@ -20,6 +20,18 @@ class BizInfo(models.Model):
     bk_biz_id = models.IntegerField(unique=True)
     bk_biz_name = models.CharField(max_length=50)
 
+class BackupRecord(models.Model):
+    bk_host_id = models.IntegerField(verbose_name="主机ID")
+    bk_file_dir = models.CharField(verbose_name="备份目录", max_length=1024)
+    bk_file_suffix = models.CharField(verbose_name="文件名后缀", max_length=255)
+    bk_backup_name = models.CharField(verbose_name="备份文件名", max_length=1024)
+    bk_file_create_time = models.CharField(verbose_name="备份时间", max_length=30)
+    bk_file_operator = models.CharField(verbose_name="备份人", max_length=30)
+    bk_job_link = models.CharField(verbose_name="JOB结果", max_length=100)
+
+    class Meta:
+        verbose_name = "备份记录"
+        verbose_name_plural = verbose_name
 
 
 
