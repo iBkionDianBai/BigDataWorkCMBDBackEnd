@@ -33,5 +33,23 @@ class BackupRecord(models.Model):
         verbose_name = "备份记录"
         verbose_name_plural = verbose_name
 
+class ApiRequestCount(models.Model):
+    """
+    API请求次数记录模型，用于运营分析
+    """
+
+    api_category = models.CharField(verbose_name="API类别", max_length=255)
+    api_name = models.CharField(verbose_name="API名称", max_length=255)
+    request_count = models.IntegerField(verbose_name="请求次数", default=0)
+
+    class Meta:
+        unique_together = ("api_category", "api_name")  # 联合唯一索引
+        verbose_name = "API请求次数"
+        verbose_name_plural = "API请求次数"
+
+    def __str__(self):
+        return f"{self.api_category}-{self.api_name}"
+
+
 
 

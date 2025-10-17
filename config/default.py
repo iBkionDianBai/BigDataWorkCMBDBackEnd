@@ -69,7 +69,7 @@ INSTALLED_APPS += (  # noqa
 MIDDLEWARE = ("corsheaders.middleware.CorsMiddleware",) + MIDDLEWARE
 # 自定义中间件
 # 这里的自定义中间件必须放到系统内置中间件后面，因为中间件是顺序执行的，blueapps.middleware.request_provider.RequestProvider会附加用户信息到request中
-MIDDLEWARE += ()
+MIDDLEWARE += ("core.middleware.RecordUserBehaviorMiddleware",)
 
 # # TODO：在文档中需要处理CORS与CSRF问题，待跟进README
 # # 在 response 添加 Access-Control-Allow-Credentials, 即允许跨域使用 cookies
