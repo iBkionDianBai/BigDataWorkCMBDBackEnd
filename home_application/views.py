@@ -366,6 +366,7 @@ def backup_file(request):
     }
     return JsonResponse(res_data)
 
+
 def get_backup_record(request):
     """
     查询备份记录
